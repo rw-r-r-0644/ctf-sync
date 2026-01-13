@@ -4,17 +4,17 @@ import "fmt"
 
 // SettingDef describes a backend setting.
 type SettingDef struct {
-	ID       string
-	Name     string
-	Required bool
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
 }
 
 // BackendDef describes an available backend type.
 type BackendDef struct {
-	ID       string
-	Name     string
-	Settings []SettingDef
-	Build    func(settings map[string]string) (Backend, error)
+	ID       string                                            `json:"id"`
+	Name     string                                            `json:"name"`
+	Settings []SettingDef                                      `json:"settings"`
+	Build    func(settings map[string]string) (Backend, error) `json:"-"`
 }
 
 var registry []BackendDef
