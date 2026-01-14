@@ -114,9 +114,7 @@ func (c *ccitClient) Fetch(ctx context.Context) ([]Challenge, error) {
 
 				if len(detail.Tags) > 0 {
 					chal.Tags = make([]string, len(detail.Tags))
-					for i, t := range detail.Tags {
-						chal.Tags[i] = t
-					}
+					copy(chal.Tags, detail.Tags)
 				}
 
 				if len(detail.Files) > 0 {
