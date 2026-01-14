@@ -133,7 +133,13 @@ func runGet(ctx context.Context, b jeopardy.Backend, id string) error {
 	return nil
 }
 
-func runGetFile(ctx context.Context, b jeopardy.Backend, challID, fileName string) error {
+func runGetFile(ctx context.Context, b jeopardy.Backend, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: get-file <challenge-id> <filename>")
+	}
+	challID := args[0]
+	fileName := args[1]
+
 	c, err := findChallenge(ctx, b, challID)
 	if err != nil {
 		return err
@@ -155,6 +161,38 @@ func runGetFile(ctx context.Context, b jeopardy.Backend, challID, fileName strin
 		return err
 	}
 	fmt.Printf("Downloaded %s\n", fileName)
+	return nil
+}
+
+func runSubmit(ctx context.Context, b jeopardy.Backend, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: submit <challenge-id> <flag>")
+	}
+	challID := args[0]
+	flag := args[1]
+
+	fmt.Printf("Submitting flag for challenge %s...\n", challID)
+	res, err := b.Submit(ctx, challID, flag)
+	if err != nil {
+		return fmt.Errorf("submission failed: %w", err)
+	}
+
+	switch res.Status {
+	case jeopardy.Accepted:
+		fmt.Printf("Correct! %s\n", res.Message)
+	case jeopardy.Rejected:
+		fmt.Printf("Incorrect. %s\n", res.Message)
+	case jeopardy.Duplicate:
+		fmt.Printf("Already solved. %s\n", res.Message)
+	case jeopardy.RateLimited:
+		fmt.Printf("Rate limited. %s\n", res.Message)
+	case jeopardy.Pending:
+		fmt.Printf("Pending... %s\n", res.Message)
+	case jeopardy.Error:
+		fmt.Printf("Error: %s\n", res.Message)
+	default:
+		fmt.Printf("Unknown status: %s\n", res.Message)
+	}
 	return nil
 }
 

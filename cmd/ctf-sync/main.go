@@ -123,7 +123,13 @@ func main() {
 		if len(cmdArgs) < 2 {
 			cmdErr = fmt.Errorf("usage: get-file <chall-id> <file-name>")
 		} else {
-			cmdErr = runGetFile(ctx, b, cmdArgs[0], cmdArgs[1])
+			cmdErr = runGetFile(ctx, b, cmdArgs)
+		}
+	case "submit":
+		if len(cmdArgs) < 2 {
+			cmdErr = fmt.Errorf("usage: submit <chall-id> <flag>")
+		} else {
+			cmdErr = runSubmit(ctx, b, cmdArgs)
 		}
 	default:
 		cmdErr = fmt.Errorf("unknown command: %s", cmdName)
