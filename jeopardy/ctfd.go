@@ -85,18 +85,76 @@ func newCTFd(baseURL string, auth func(*http.Request)) (*ctfdClient, error) {
 	}, nil
 }
 
-func (c *ctfdClient) Fetch(ctx context.Context) ([]Challenge, error) {
-	summaries, err := c.fetchChallengeSummaries(ctx)
-	if err != nil {
-		return nil, err
+func (c *ctfdClient) doRequest(ctx context.Context, method, path string, body any, out any) error {
+	var bodyReader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("marshal body: %w", err)
+		}
+		bodyReader = bytes.NewBuffer(data)
 	}
 
-	results := make([]Challenge, 0, len(summaries))
-	for _, summary := range summaries {
-		detail, err := c.fetchChallengeDetail(ctx, summary.ID)
-		if err != nil {
+	reqURL := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, bodyReader)
+	if err != nil {
+		return err
+	}
+	c.applyAuth(req)
+	req.Header.Set("Accept", "application/json")
+	// Always set Content-Type to application/json as some CTFd instances require it even for GET
+	req.Header.Set("Content-Type", "application/json")
+
+	if method == "POST" && c.authType == "cookie" {
+		csrf, err := c.fetchCSRFToken(ctx)
+		if err == nil && csrf != "" {
+			req.Header.Set("CSRF-Token", csrf)
+		}
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed status=%d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("decode response from %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func (c *ctfdClient) Fetch(ctx context.Context) ([]Challenge, error) {
+	var listResp ctfdListResponse
+	if err := c.doRequest(ctx, "GET", "/api/v1/challenges", nil, &listResp); err != nil {
+		return nil, err
+	}
+	if !listResp.Success {
+		return nil, fmt.Errorf("fetch challenges failed: success=false")
+	}
+
+	results := make([]Challenge, 0, len(listResp.Data))
+	for _, summary := range listResp.Data {
+		var detailResp ctfdDetailResponse
+		path := fmt.Sprintf("/api/v1/challenges/%d", summary.ID)
+		if err := c.doRequest(ctx, "GET", path, nil, &detailResp); err != nil {
 			return nil, err
 		}
+		if !detailResp.Success {
+			return nil, fmt.Errorf("fetch detail %d failed: success=false", summary.ID)
+		}
+		detail := detailResp.Data
 
 		challenge := Challenge{
 			ID:          strconv.Itoa(summary.ID),
@@ -141,79 +199,30 @@ func (c *ctfdClient) Submit(ctx context.Context, challengeID, flag string) (*Sub
 		"challenge_id": cid,
 		"submission":   flag,
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("encode submission: %w", err)
-	}
-
-	reqURL := c.baseURL + "/api/v1/challenges/attempt"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	c.applyAuth(httpReq)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	if c.authType == "cookie" {
-		csrfToken, err := c.fetchCSRFToken(ctx)
-		if err == nil && csrfToken != "" {
-			httpReq.Header.Set("CSRF-Token", csrfToken)
-		}
-	}
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ctfd submission failed: %s", strings.TrimSpace(string(respBody)))
-	}
 
 	var parsed ctfdSubmitResponse
-	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return nil, fmt.Errorf("parse ctfd response: %w", err)
+	if err := c.doRequest(ctx, "POST", "/api/v1/challenges/attempt", payload, &parsed); err != nil {
+		return nil, err
 	}
 
 	return c.parseSubmitResponse(parsed), nil
 }
 
 func (c *ctfdClient) Solves(ctx context.Context) ([]Solve, error) {
-	urls := []string{
-		c.baseURL + "/api/v1/users/me/solves",
-		c.baseURL + "/api/v1/teams/me/solves",
+	endpoints := []string{
+		"/api/v1/users/me/solves",
+		"/api/v1/teams/me/solves",
 	}
 
 	var lastErr error
-	for _, reqURL := range urls {
-		httpReq, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		c.applyAuth(httpReq)
-		httpReq.Header.Set("Accept", "application/json")
-
-		resp, err := c.client.Do(httpReq)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("ctfd solves request failed (%s): %s", resp.Status, strings.TrimSpace(string(body)))
-			continue
-		}
-
+	for _, path := range endpoints {
 		var parsed ctfdSolvesResponse
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			lastErr = fmt.Errorf("parse ctfd solves response: %w", err)
+		if err := c.doRequest(ctx, "GET", path, nil, &parsed); err != nil {
+			lastErr = err
 			continue
 		}
 		if !parsed.Success {
-			lastErr = fmt.Errorf("ctfd solves response error: %s", strings.TrimSpace(parsed.Message))
+			lastErr = fmt.Errorf("api error: %s", parsed.Message)
 			continue
 		}
 
@@ -230,67 +239,11 @@ func (c *ctfdClient) Solves(ctx context.Context) ([]Solve, error) {
 		}
 		return result, nil
 	}
+
 	if lastErr != nil {
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("ctfd solves request failed")
-}
-
-func (c *ctfdClient) fetchChallengeSummaries(ctx context.Context) ([]ctfdChallengeSummary, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/v1/challenges", nil)
-	if err != nil {
-		return nil, err
-	}
-	c.applyAuth(req)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ctfd list failed: %s", strings.TrimSpace(string(body)))
-	}
-
-	var payload ctfdListResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	if !payload.Success {
-		return nil, fmt.Errorf("ctfd list failed: success=false")
-	}
-	return payload.Data, nil
-}
-
-func (c *ctfdClient) fetchChallengeDetail(ctx context.Context, id int) (*ctfdChallengeDetail, error) {
-	reqURL := fmt.Sprintf("%s/api/v1/challenges/%d", c.baseURL, id)
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	c.applyAuth(req)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ctfd detail failed: %s", strings.TrimSpace(string(body)))
-	}
-
-	var payload ctfdDetailResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	if !payload.Success {
-		return nil, fmt.Errorf("ctfd detail failed: success=false")
-	}
-	return &payload.Data, nil
 }
 
 func (c *ctfdClient) fetchCSRFToken(ctx context.Context) (string, error) {
