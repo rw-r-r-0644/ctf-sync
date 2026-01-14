@@ -132,8 +132,13 @@ func (c *ctfdClient) Submit(ctx context.Context, challengeID, flag string) (*Sub
 		return nil, fmt.Errorf("challenge ID is required")
 	}
 
+	cid, err := strconv.Atoi(challengeID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid challenge id %q: %w", challengeID, err)
+	}
+
 	payload := map[string]any{
-		"challenge_id": challengeID,
+		"challenge_id": cid,
 		"submission":   flag,
 	}
 	body, err := json.Marshal(payload)
@@ -253,6 +258,9 @@ func (c *ctfdClient) fetchChallengeSummaries(ctx context.Context) ([]ctfdChallen
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
 	}
+	if !payload.Success {
+		return nil, fmt.Errorf("ctfd list failed: success=false")
+	}
 	return payload.Data, nil
 }
 
@@ -278,6 +286,9 @@ func (c *ctfdClient) fetchChallengeDetail(ctx context.Context, id int) (*ctfdCha
 	var payload ctfdDetailResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, err
+	}
+	if !payload.Success {
+		return nil, fmt.Errorf("ctfd detail failed: success=false")
 	}
 	return &payload.Data, nil
 }
