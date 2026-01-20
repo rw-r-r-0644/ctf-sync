@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rw-r-r-0644/ctf-sync/internal/tls"
 )
 
 func init() {
@@ -110,7 +112,7 @@ func newCTFd(baseURL string, auth func(*http.Request)) (*ctfdClient, error) {
 	return &ctfdClient{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		applyAuth: auth,
-		client:    &http.Client{Timeout: 30 * time.Second},
+		client:    tls.NewClient(),
 		authType:  authType,
 	}, nil
 }
