@@ -39,6 +39,18 @@ func init() {
 			return newCTFd(s["base_url"], cookieAuth(s["cookie"]))
 		},
 	})
+
+	Register(BackendDef{
+		ID:   "ctfd_headers",
+		Name: "CTFd (Headers)",
+		Settings: []SettingDef{
+			{ID: "base_url", Name: "Base URL", Required: true},
+			{ID: "headers", Name: "Headers", Required: true},
+		},
+		Build: func(s map[string]string) (Backend, error) {
+			return newCTFd(s["base_url"], headerAuth(s["headers"]))
+		},
+	})
 }
 
 type ctfdClient struct {
@@ -72,6 +84,24 @@ func tokenAuth(token string) func(*http.Request) {
 func cookieAuth(cookie string) func(*http.Request) {
 	return func(r *http.Request) {
 		r.Header.Set("Cookie", cookie)
+	}
+}
+
+func headerAuth(rawHeaders string) func(*http.Request) {
+	return func(r *http.Request) {
+		lines := strings.Split(rawHeaders, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+				r.Header.Set(key, val)
+			}
+		}
 	}
 }
 
