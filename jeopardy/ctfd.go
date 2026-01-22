@@ -26,7 +26,7 @@ func init() {
 			{ID: "token", Name: "API Token", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], tokenAuth(s["token"]))
+			return newCTFd(s["base_url"], tokenAuth(s["token"]), nil)
 		},
 	})
 
@@ -38,7 +38,7 @@ func init() {
 			{ID: "cookie", Name: "Session Cookie", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], cookieAuth(s["cookie"]))
+			return newCTFd(s["base_url"], cookieAuth(s["cookie"]), nil)
 		},
 	})
 
@@ -50,7 +50,7 @@ func init() {
 			{ID: "headers", Name: "Headers", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], headerAuth(s["headers"]))
+			return newCTFd(s["base_url"], headerAuth(s["headers"]), tls.NewClient())
 		},
 	})
 }
@@ -107,12 +107,15 @@ func headerAuth(rawHeaders string) func(*http.Request) {
 	}
 }
 
-func newCTFd(baseURL string, auth func(*http.Request)) (*ctfdClient, error) {
+func newCTFd(baseURL string, auth func(*http.Request), client *http.Client) (*ctfdClient, error) {
 	authType := "token"
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
 	return &ctfdClient{
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		applyAuth: auth,
-		client:    tls.NewClient(),
+		client:    client,
 		authType:  authType,
 	}, nil
 }
