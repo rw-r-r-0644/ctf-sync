@@ -4,7 +4,6 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"context"
-	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
-	"golang.org/x/net/http2"
 
 	utls "github.com/refraction-networking/utls"
 )
@@ -75,39 +73,40 @@ func (rc *readCloser) Close() error {
 	return rc.Closer.Close()
 }
 
-// NewClient returns a new http.Client that uses utls to mimic a real browser (Firefox).
-// This helps bypass WAFs that fingerprint the standard Go TLS client.
+// NewClient returns a new http.Client that uses utls to mimic a real browser (Firefox) for TLS.
 // The client automatically handles response decompression for gzip, deflate, br, and zstd.
+// It supports both HTTP/1.1 and HTTP/2 via ALPN negotiation.
 func NewClient() *http.Client {
-	return &http.Client{
-		Transport: &decompressingTransport{
-			rt: &http2.Transport{
-				DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-					dialer := net.Dialer{Timeout: 30 * time.Second}
-					conn, err := dialer.DialContext(context.Background(), network, addr)
-					if err != nil {
-						return nil, err
-					}
+	transport := &http.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout: 30 * time.Second,
+			}
+			conn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
 
-					host, _, err := net.SplitHostPort(addr)
-					if err != nil {
-						host = addr
-					}
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
 
-					uConn := utls.UClient(conn, &utls.Config{
-						ServerName: host,
-						NextProtos: []string{"h2", "http/1.1"},
-					}, utls.HelloFirefox_Auto)
+			uConn := utls.UClient(conn, &utls.Config{
+				ServerName: host,
+			}, utls.HelloFirefox_Auto)
 
-					if err := uConn.Handshake(); err != nil {
-						_ = conn.Close()
-						return nil, err
-					}
+			if err := uConn.Handshake(); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
 
-					return uConn, nil
-				},
-			},
+			return uConn, nil
 		},
-		Timeout: 30 * time.Second,
+	}
+
+	return &http.Client{
+		Transport: &decompressingTransport{rt: transport},
+		Timeout:   30 * time.Second,
 	}
 }
