@@ -73,10 +73,26 @@ func (rc *readCloser) Close() error {
 	return rc.Closer.Close()
 }
 
-// NewClient returns a new http.Client that uses utls to mimic a real browser (Firefox) for TLS.
+// Fingerprint represents a browser TLS fingerprint
+type Fingerprint string
+
+const (
+	FingerprintFirefox Fingerprint = "firefox"
+	FingerprintChrome  Fingerprint = "chrome"
+)
+
+// NewClient returns a new http.Client that uses utls to mimic a real browser for TLS.
 // The client automatically handles response decompression for gzip, deflate, br, and zstd.
 // It supports both HTTP/1.1 and HTTP/2 via ALPN negotiation.
-func NewClient() *http.Client {
+func NewClient(fingerprint Fingerprint) *http.Client {
+	var clientHello utls.ClientHelloID
+	switch fingerprint {
+	case FingerprintChrome:
+		clientHello = utls.HelloChrome_Auto
+	default: // Firefox is default
+		clientHello = utls.HelloFirefox_Auto
+	}
+
 	transport := &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			dialer := &net.Dialer{
@@ -94,7 +110,7 @@ func NewClient() *http.Client {
 
 			uConn := utls.UClient(conn, &utls.Config{
 				ServerName: host,
-			}, utls.HelloFirefox_Auto)
+			}, clientHello)
 
 			if err := uConn.Handshake(); err != nil {
 				_ = conn.Close()

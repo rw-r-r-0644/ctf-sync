@@ -50,7 +50,7 @@ func init() {
 			{ID: "headers", Name: "Headers", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], headerAuth(s["headers"]), tls.NewClient())
+			return newCTFd(s["base_url"], headerAuth(s["headers"]), tls.NewClient(tls.FingerprintFirefox))
 		},
 	})
 }
