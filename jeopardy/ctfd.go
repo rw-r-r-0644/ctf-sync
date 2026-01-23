@@ -26,7 +26,7 @@ func init() {
 			{ID: "token", Name: "API Token", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], tokenAuth(s["token"]), nil)
+			return newCTFd(s["base_url"], tokenAuth(s["token"]), tls.NewClient(tls.FingerprintFirefox))
 		},
 	})
 
@@ -38,7 +38,7 @@ func init() {
 			{ID: "cookie", Name: "Session Cookie", Required: true},
 		},
 		Build: func(s map[string]string) (Backend, error) {
-			return newCTFd(s["base_url"], cookieAuth(s["cookie"]), nil)
+			return newCTFd(s["base_url"], cookieAuth(s["cookie"]), tls.NewClient(tls.FingerprintFirefox))
 		},
 	})
 
