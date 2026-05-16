@@ -7,14 +7,15 @@ import (
 
 // Challenge represents a CTF challenge.
 type Challenge struct {
-	ID          string
-	Name        string
-	Category    string
-	Description string
-	Points      int
-	Tags        []string
-	Files       []File
-	Solved      bool
+	ID             string
+	Name           string
+	Category       string
+	Description    string
+	Points         int
+	Tags           []string
+	Files          []File
+	Solved         bool
+	ConnectionInfo string
 }
 
 // File represents a challenge attachment.

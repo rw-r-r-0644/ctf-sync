@@ -192,11 +192,12 @@ func (c *ctfdClient) Fetch(ctx context.Context) ([]Challenge, error) {
 		detail := detailResp.Data
 
 		challenge := Challenge{
-			ID:          strconv.Itoa(summary.ID),
-			Name:        nonEmpty(detail.Name, summary.Name),
-			Category:    nonEmpty(detail.Category, summary.Category),
-			Description: detail.Description,
-			Points:      detail.Value,
+			ID:             strconv.Itoa(summary.ID),
+			Name:           nonEmpty(detail.Name, summary.Name),
+			Category:       nonEmpty(detail.Category, summary.Category),
+			Description:    detail.Description,
+			Points:         detail.Value,
+			ConnectionInfo: strings.TrimSpace(detail.ConnectionInfo),
 		}
 
 		if len(detail.Files) > 0 {
@@ -374,12 +375,13 @@ type ctfdChallengeSummary struct {
 }
 
 type ctfdChallengeDetail struct {
-	ID          int      `json:"id"`
-	Name        string   `json:"name"`
-	Category    string   `json:"category"`
-	Description string   `json:"description"`
-	Value       int      `json:"value"`
-	Files       []string `json:"files"`
+	ID             int      `json:"id"`
+	Name           string   `json:"name"`
+	Category       string   `json:"category"`
+	Description    string   `json:"description"`
+	Value          int      `json:"value"`
+	Files          []string `json:"files"`
+	ConnectionInfo string   `json:"connection_info"`
 }
 
 type ctfdListResponse struct {
